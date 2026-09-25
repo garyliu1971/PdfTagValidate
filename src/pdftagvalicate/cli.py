@@ -48,26 +48,34 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run report-only checks (no output file written) instead of repairs.",
     )
 
-    repairs = parser.add_argument_group("repairs")
-    repairs.add_argument("--all", action="store_true", help="Apply all safe repairs (default when no repair flag given).")
-    repairs.add_argument("--metadata", action="store_true", help="Fix pdfuaid:part, /ViewerPreferences, /MarkInfo.")
-    repairs.add_argument("--title", action="store_true", help="Back-fill dc:title from /Info /Title when missing.")
-    repairs.add_argument("--lang", action="store_true", help="Set catalog /Lang from XMP dc:language when missing.")
+    repairs = parser.add_argument_group("targets")
+    repairs.add_argument(
+        "--all",
+        action="store_true",
+        help="Target everything (all repairs, or all checks with --check); default when no target flag given.",
+    )
+    repairs.add_argument(
+        "--metadata", action="store_true", help="Target pdfuaid:part, /ViewerPreferences, /MarkInfo."
+    )
+    repairs.add_argument("--title", action="store_true", help="Target the document title / dc:title.")
+    repairs.add_argument("--lang", action="store_true", help="Target the catalog /Lang.")
     repairs.add_argument(
         "--lang-value",
         metavar="CODE",
-        help="Explicit language code to use for --lang (e.g. en-US).",
+        help="Explicit language code for --lang when repairing (e.g. en-US).",
     )
-    repairs.add_argument("--th-scope", action="store_true", help="Add /Scope attribute to <TH> cells missing it.")
+    repairs.add_argument("--th-scope", action="store_true", help="Target <TH> cells missing /Scope.")
     repairs.add_argument(
-        "--link-nesting", action="store_true", help="Wrap orphaned Link annotations inside <Link> struct elements."
+        "--link-nesting", action="store_true", help="Target orphaned Link annotations."
     )
-    repairs.add_argument("--fix-tbody", action="store_true", help="Dissolve fake Table->TBody->TR->TD wrapper chains.")
+    repairs.add_argument(
+        "--fix-tbody", action="store_true", help="Target fake Table->TBody->TR->TD wrapper chains."
+    )
 
     checks = parser.add_argument_group("checks")
-    checks.add_argument("--alt-text", action="store_true", help="Report <Figure> elements missing /Alt.")
-    checks.add_argument("--fonts", action="store_true", help="Report unembedded / Type3 / missing-ToUnicode fonts.")
-    checks.add_argument("--suspects", action="store_true", help="Report the /MarkInfo /Suspects flag.")
+    checks.add_argument("--alt-text", action="store_true", help="Report <Figure> elements missing /Alt (check mode).")
+    checks.add_argument("--fonts", action="store_true", help="Report unembedded / Type3 / missing-ToUnicode fonts (check mode).")
+    checks.add_argument("--suspects", action="store_true", help="Report the /MarkInfo /Suspects flag (check mode).")
 
     parser.add_argument(
         "--dry-run", action="store_true", help="Report what would change without writing an output file."
@@ -140,11 +148,17 @@ def _run_repair_mode(parser: argparse.ArgumentParser, args) -> int:
 
 def _run_check_mode(args) -> int:
     options = CheckOptions(
+        metadata=args.metadata,
+        title=args.title,
+        lang=args.lang,
+        th_scope=args.th_scope,
+        link_nesting=args.link_nesting,
+        fix_tbody=args.fix_tbody,
         alt_text=args.alt_text,
         fonts=args.fonts,
         suspects=args.suspects,
     )
-    if not options.any_selected:
+    if args.all or not options.any_selected:
         options = CheckOptions.all()
 
     if not args.json:

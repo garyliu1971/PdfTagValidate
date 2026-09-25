@@ -61,16 +61,33 @@ def test_output_required_unless_dry_run(tmp_path):
         assert ex.code == 2
 
 
-def test_check_mode_no_issues(tmp_path, capsys):
+def test_check_mode_default_runs_all_checks(tmp_path, capsys):
     src = tmp_path / "in.pdf"
     _write_blank_pdf(src)
 
     exit_code = main([str(src), "--check", "--json"])
 
+    assert exit_code == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["mode"] == "check"
+    assert payload["total_issues"] == 5
+    names = {r["name"] for r in payload["reports"]}
+    assert "PDF/UA identifier (pdfuaid:part)" in names
+    assert "Document title (dc:title)" in names
+    assert "Document language (/Lang)" in names
+
+
+def test_check_mode_single_check_no_issues(tmp_path, capsys):
+    src = tmp_path / "in.pdf"
+    _write_blank_pdf(src)
+
+    exit_code = main([str(src), "--check", "--fonts", "--json"])
+
     assert exit_code == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["mode"] == "check"
     assert payload["total_issues"] == 0
+    assert len(payload["reports"]) == 1
 
 
 def _write_tagged_pdf_with_figure(path):
@@ -98,7 +115,7 @@ def test_check_mode_reports_missing_alt(tmp_path, capsys):
     src = tmp_path / "in.pdf"
     _write_tagged_pdf_with_figure(src)
 
-    exit_code = main([str(src), "--check", "--json"])
+    exit_code = main([str(src), "--check", "--alt-text", "--json"])
 
     assert exit_code == 1
     payload = json.loads(capsys.readouterr().out)

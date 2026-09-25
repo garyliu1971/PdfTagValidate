@@ -12,24 +12,17 @@ from __future__ import annotations
 import pikepdf
 from pikepdf import Array, Dictionary, Name
 
-from .pdfutil import get_kids, replace_kid, role_of
+from .pdfutil import get_kids, is_tagged, replace_kid, role_of
 from .types import RepairReport
 
 
 def fix(pdf: pikepdf.Pdf) -> RepairReport:
     name = "Fake TBody wrappers"
 
-    from .pdfutil import is_tagged
-
     if not is_tagged(pdf):
         return RepairReport(name, 0, "Document is not tagged - skipped.")
 
-    struct_root = pdf.Root.get(Name.StructTreeRoot)
-    if struct_root is None:
-        return RepairReport(name, 0, "No struct tree root - skipped.")
-
-    tables: list[Dictionary] = []
-    _collect_by_role(struct_root.get(Name.K), "Table", tables, set())
+    tables = collect_fake_tables(pdf)
 
     changes = 0
     for table in tables:
@@ -47,19 +40,47 @@ def fix(pdf: pikepdf.Pdf) -> RepairReport:
 # ---- helpers ---------------------------------------------------------------
 
 
-def _try_fix_fake_table(table: Dictionary) -> bool:
+def collect_fake_tables(pdf: pikepdf.Pdf) -> list[Dictionary]:
+    """Read-only: returns <Table> elements that are fake
+    Table->TBody->TR->TD/TH wrapper chains. Does not modify the PDF."""
+    struct_root = pdf.Root.get(Name.StructTreeRoot)
+    if struct_root is None:
+        return []
+    tables: list[Dictionary] = []
+    _collect_by_role(struct_root.get(Name.K), "Table", tables, set())
+    return [t for t in tables if _is_fake_table(t)]
+
+
+def _fake_table_cell(table: Dictionary) -> Dictionary | None:
+    """Returns the single TD/TH cell of a fake wrapper chain, or None."""
     if _has_kid_role(table, "THead") or _has_kid_role(table, "TFoot"):
-        return False
+        return None
 
     tbody = _get_single_kid_by_role(table, "TBody")
     if tbody is None:
-        return False
+        return None
 
     tr = _get_single_kid_by_role(tbody, "TR")
     if tr is None:
+        return None
+
+    return _get_single_kid_by_role(tr, "TD") or _get_single_kid_by_role(tr, "TH")
+
+
+def _is_fake_table(table: Dictionary) -> bool:
+    cell = _fake_table_cell(table)
+    if cell is None:
         return False
 
-    cell = _get_single_kid_by_role(tr, "TD") or _get_single_kid_by_role(tr, "TH")
+    parent = table.get(Name.P)
+    if not isinstance(parent, Dictionary):
+        return False
+
+    return bool(get_kids(cell))
+
+
+def _try_fix_fake_table(table: Dictionary) -> bool:
+    cell = _fake_table_cell(table)
     if cell is None:
         return False
 

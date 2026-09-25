@@ -76,16 +76,46 @@ class RepairOptions:
 
 @dataclass
 class CheckOptions:
-    """Which checks to run (report-only, no file written)."""
+    """Which checks to run (report-only, no file written).
 
-    alt_text: bool = False       # Figure elements missing /Alt
-    fonts: bool = False          # unembedded / Type3 / missing ToUnicode
-    suspects: bool = False       # /MarkInfo /Suspects flag
+    Each repair flag has a matching report-only check, so ``--check`` can
+    audit a document the same way the repair pass would fix it.
+    """
+
+    metadata: bool = False      # pdfuaid:part, MarkInfo, DisplayDocTitle
+    title: bool = False         # dc:title
+    lang: bool = False          # catalog /Lang
+    th_scope: bool = False      # TH cells missing /Scope
+    link_nesting: bool = False  # orphaned Link annotations
+    fix_tbody: bool = False     # fake Table->TBody->TR->TD wrappers
+    alt_text: bool = False      # Figure elements missing /Alt
+    fonts: bool = False         # unembedded / Type3 / missing ToUnicode
+    suspects: bool = False      # /MarkInfo /Suspects flag
 
     @classmethod
     def all(cls) -> "CheckOptions":
-        return cls(alt_text=True, fonts=True, suspects=True)
+        return cls(
+            metadata=True,
+            title=True,
+            lang=True,
+            th_scope=True,
+            link_nesting=True,
+            fix_tbody=True,
+            alt_text=True,
+            fonts=True,
+            suspects=True,
+        )
 
     @property
     def any_selected(self) -> bool:
-        return self.alt_text or self.fonts or self.suspects
+        return (
+            self.metadata
+            or self.title
+            or self.lang
+            or self.th_scope
+            or self.link_nesting
+            or self.fix_tbody
+            or self.alt_text
+            or self.fonts
+            or self.suspects
+        )
