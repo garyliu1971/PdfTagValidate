@@ -16,6 +16,8 @@ def fix_pdf_ua_identifier(pdf: pikepdf.Pdf) -> RepairReport:
     try:
         with pdf.open_metadata(set_pikepdf_as_editor=False) as meta:
             meta.register_xml_namespace(_PDFUAID_NS, "pdfuaid")
+            if str(meta.get("pdfuaid:part", "")).strip() == "1":
+                return RepairReport(name, 0, "pdfuaid:part is already set to 1.")
             meta["pdfuaid:part"] = "1"
         return RepairReport(name, 1, "Added pdfuaid:part = 1 to XMP metadata.")
     except Exception as ex:  # noqa: BLE001 - surfaced to the caller as a report

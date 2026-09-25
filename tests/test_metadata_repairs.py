@@ -31,3 +31,10 @@ def test_fix_pdf_ua_identifier_sets_xmp(blank_pdf):
     assert report.fixed == 1
     with blank_pdf.open_metadata() as meta:
         assert meta["pdfuaid:part"] == "1"
+
+
+def test_fix_pdf_ua_identifier_is_idempotent(blank_pdf):
+    first = metadata_repairs.fix_pdf_ua_identifier(blank_pdf)
+    second = metadata_repairs.fix_pdf_ua_identifier(blank_pdf)
+    assert first.fixed == 1
+    assert second.fixed == 0

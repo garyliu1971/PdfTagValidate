@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import pikepdf
 
-from . import link_nesting_repair, metadata_repairs, tbody_repair, th_scope_repair
+from . import (
+    lang_repair,
+    link_nesting_repair,
+    metadata_repairs,
+    tbody_repair,
+    th_scope_repair,
+    title_repair,
+)
 from .types import RepairOptions, RepairReport
 
 
@@ -15,6 +22,10 @@ def run_repairs(pdf: pikepdf.Pdf, options: RepairOptions) -> list[RepairReport]:
         _run_one(reports, lambda: metadata_repairs.fix_pdf_ua_identifier(pdf))
         _run_one(reports, lambda: metadata_repairs.fix_mark_info(pdf))
         _run_one(reports, lambda: metadata_repairs.fix_display_doc_title(pdf))
+    if options.title:
+        _run_one(reports, lambda: title_repair.fix(pdf))
+    if options.lang:
+        _run_one(reports, lambda: lang_repair.fix(pdf, options.lang_value))
     if options.fix_tbody:
         _run_one(reports, lambda: tbody_repair.fix(pdf))
     if options.th_scope:
