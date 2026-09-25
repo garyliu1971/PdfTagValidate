@@ -17,7 +17,7 @@ from __future__ import annotations
 import pikepdf
 from pikepdf import Array, Dictionary, Name
 
-from .pdfutil import append_kid, ensure_tagged, get_kids, is_tagged, role_of
+from .pdfutil import append_kid, ensure_tagged, get_kids, is_tagged, role_of, visit_key
 from .types import RepairReport
 
 
@@ -27,7 +27,7 @@ def collect_orphaned_links(pdf: pikepdf.Pdf) -> list[tuple[Dictionary, Dictionar
     tagged_obj_nums: set[int] = set()
     existing_root = pdf.Root.get(Name.StructTreeRoot)
     if existing_root is not None:
-        _collect_tagged(existing_root, tagged_obj_nums, parent_is_link=False)
+        _collect_tagged(existing_root, tagged_obj_nums, parent_is_link=False, visited=set())
 
     orphans: list[tuple[Dictionary, Dictionary]] = []
     for page in pdf.pages:
@@ -100,9 +100,15 @@ def fix(pdf: pikepdf.Pdf) -> RepairReport:
 # ---- helpers ---------------------------------------------------------------
 
 
-def _collect_tagged(node, tagged: set, parent_is_link: bool) -> None:
+def _collect_tagged(node, tagged: set, parent_is_link: bool, visited: set) -> None:
     if not isinstance(node, Dictionary):
         return
+
+    key = visit_key(node)
+    if key in visited:
+        return
+    visited.add(key)
+
     is_link = role_of(node) == "Link"
 
     for kid in get_kids(node):
@@ -112,7 +118,7 @@ def _collect_tagged(node, tagged: set, parent_is_link: bool) -> None:
                 objgen = getattr(annot_ref, "objgen", (0, 0))
                 if objgen != (0, 0):
                     tagged.add(objgen[0])
-        _collect_tagged(kid, tagged, is_link)
+        _collect_tagged(kid, tagged, is_link, visited)
 
 
 def _find_document_element(root: Dictionary):

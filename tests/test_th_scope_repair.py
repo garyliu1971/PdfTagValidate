@@ -60,3 +60,12 @@ def test_skips_th_that_already_has_scope(tagged_pdf):
     report = th_scope_repair.fix(pdf)
 
     assert report.fixed == 0
+
+
+def test_handles_cyclic_struct_tree(tagged_pdf):
+    pdf, struct_root, doc_elem = tagged_pdf
+    doc_elem[Name.K] = doc_elem  # self-cycle
+
+    report = th_scope_repair.fix(pdf)
+
+    assert report.fixed == 0

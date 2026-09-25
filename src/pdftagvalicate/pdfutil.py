@@ -118,6 +118,17 @@ def role_of(elem) -> Optional[str]:
     return str(name)[1:] if name is not None else None  # strip leading '/'
 
 
+def visit_key(obj) -> tuple | int:
+    """Stable identity key for cycle detection when walking a struct tree.
+
+    Uses the (obj, gen) pair for indirect objects and ``id()`` for direct
+    objects, so a malformed /K that points back at an ancestor can be
+    detected instead of recursing forever.
+    """
+    objgen = getattr(obj, "objgen", (0, 0))
+    return objgen if objgen != (0, 0) else id(obj)
+
+
 def same_object(a: Object, b: Object) -> bool:
     """Identity comparison that works for both indirect and direct objects."""
     try:

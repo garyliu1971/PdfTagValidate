@@ -10,7 +10,7 @@ from __future__ import annotations
 import pikepdf
 from pikepdf import Array, Dictionary, Name
 
-from .pdfutil import get_kids, get_struct_kids, is_tagged, role_of
+from .pdfutil import get_kids, get_struct_kids, is_tagged, role_of, visit_key
 from .types import RepairReport
 
 
@@ -20,7 +20,7 @@ def collect_missing_scopes(pdf: pikepdf.Pdf) -> list[tuple[Dictionary, str]]:
     struct_root = pdf.Root.get(Name.StructTreeRoot)
     findings: list[tuple[Dictionary, str]] = []
     if struct_root is not None:
-        _collect_missing_scopes(struct_root, findings)
+        _collect_missing_scopes(struct_root, findings, set())
     return findings
 
 
@@ -48,14 +48,20 @@ def fix(pdf: pikepdf.Pdf) -> RepairReport:
 # ---- traversal ---------------------------------------------------------------
 
 
-def _collect_missing_scopes(node, findings: list) -> None:
+def _collect_missing_scopes(node, findings: list, visited: set) -> None:
     if not isinstance(node, Dictionary):
         return
+
+    key = visit_key(node)
+    if key in visited:
+        return
+    visited.add(key)
+
     if role_of(node) == "Table":
         _walk_table(node, findings)
         return
     for kid in get_kids(node):
-        _collect_missing_scopes(kid, findings)
+        _collect_missing_scopes(kid, findings, visited)
 
 
 def _walk_table(table: Dictionary, findings: list) -> None:

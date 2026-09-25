@@ -52,3 +52,12 @@ def test_creates_struct_tree_for_fully_untagged_pdf(blank_pdf):
 
     assert report.fixed == 1
     assert blank_pdf.Root.get(Name.StructTreeRoot) is not None
+
+
+def test_handles_cyclic_struct_tree(tagged_pdf):
+    pdf, struct_root, doc_elem = tagged_pdf
+    doc_elem[Name.K] = doc_elem  # self-cycle
+
+    report = link_nesting_repair.fix(pdf)
+
+    assert report.fixed == 0
