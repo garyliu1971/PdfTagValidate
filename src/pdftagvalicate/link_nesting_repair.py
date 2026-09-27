@@ -69,13 +69,45 @@ def fix(pdf: pikepdf.Pdf) -> RepairReport:
 
     # Step 4: prepare the parent tree for new entries.
     parent_tree = _ensure_parent_tree(pdf, root)
-    nums = _ensure_nums(parent_tree)
+    try:
+        nums = _ensure_nums(parent_tree)
+    except ValueError as ex:
+        return RepairReport(name, 0, str(ex))
     next_key = _next_parent_tree_key(nums, root)
 
     fixed = 0
 
-    for page_obj, annot in orphans:
-        obj_ref = Dictionary(Type=Name.OBJR, Pg=page_obj, Obj=annot)
+    for page in pdf.pages:
+        annots = page.get(Name.Annots)
+        if annots is None:
+            continue
+
+        for annot in annots:
+            if not isinstance(annot, Dictionary):
+                continue
+            if annot.get(Name.Subtype) != Name.Link:
+                continue
+
+            # Make non-indirect annotations indirect so we can reference them
+            # reliably; without this, objgen==(0,0) would cause the annotation
+            # to be silently skipped.
+            if getattr(annot, "objgen", (0, 0)) == (0, 0):
+                annot = pdf.make_indirect(annot)  # noqa: PLW2901
+                # Re-attach the now-indirect object back to /Annots
+                raw_annots = page.get(Name.Annots)
+                if isinstance(raw_annots, Array):
+                    for idx, item in enumerate(raw_annots):
+                        if item is annot or (getattr(item, "objgen", None) == (0, 0) and id(item) == id(annot)):
+                            raw_annots[idx] = annot
+                            break
+
+            objgen = annot.objgen
+            if objgen[0] in tagged_obj_nums:
+                continue
+
+            page_obj = page.obj
+
+            obj_ref = Dictionary(Type=Name.OBJR, Pg=page_obj, Obj=annot)
 
         link_dict = pdf.make_indirect(
             Dictionary(Type=Name.StructElem, S=Name.Link, Pg=page_obj, P=doc_elem, K=obj_ref)
@@ -100,14 +132,17 @@ def fix(pdf: pikepdf.Pdf) -> RepairReport:
 # ---- helpers ---------------------------------------------------------------
 
 
-def _collect_tagged(node, tagged: set, parent_is_link: bool, visited: set) -> None:
+def _collect_tagged(node, tagged: set, parent_is_link: bool, visited: set | None = None) -> None:
+    if visited is None:
+        visited = set()
     if not isinstance(node, Dictionary):
         return
-
-    key = visit_key(node)
-    if key in visited:
+    # Cycle guard
+    node_key = getattr(node, "objgen", (0, 0))
+    node_key = node_key if node_key != (0, 0) else id(node)
+    if node_key in visited:
         return
-    visited.add(key)
+    visited.add(node_key)
 
     is_link = role_of(node) == "Link"
 
@@ -143,6 +178,19 @@ def _ensure_parent_tree(pdf: pikepdf.Pdf, root: Dictionary) -> Dictionary:
 
 
 def _ensure_nums(parent_tree: Dictionary) -> Array:
+    """Return the flat /Nums array from *parent_tree*.
+
+    If the parent tree uses a /Kids-based number-tree partition (common in
+    multi-page tagged PDFs) we refuse to corrupt it by bolting on a
+    conflicting /Nums — instead we raise so the caller can report an
+    unsupported-shape error rather than silently corrupting the file.
+    """
+    if Name.Kids in parent_tree and Name.Nums not in parent_tree:
+        raise ValueError(
+            "ParentTree uses a /Kids-partitioned number tree — this shape is "
+            "not yet supported by the link-nesting repair. Skipping to avoid "
+            "structural corruption."
+        )
     nums = parent_tree.get(Name.Nums)
     if nums is None:
         nums = Array([])
@@ -151,13 +199,19 @@ def _ensure_nums(parent_tree: Dictionary) -> Array:
 
 
 def _next_parent_tree_key(nums: Array, root: Dictionary) -> int:
-    hint = root.get(Name.ParentTreeNextKey)
-    if hint is not None:
-        return int(hint)
+    """Return the next available ParentTree key.
 
+    Computes ``max(hint, actual_max + 1)`` so a stale /ParentTreeNextKey hint
+    never collides with an already-existing entry.
+    """
     max_key = -1
     for i in range(0, len(nums), 2):
         key = nums[i]
         if key is not None:
             max_key = max(max_key, int(key))
-    return max_key + 1
+    actual_next = max_key + 1
+
+    hint = root.get(Name.ParentTreeNextKey)
+    if hint is not None:
+        return max(int(hint), actual_next)
+    return actual_next
